@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24.18.0-bookworm-slim AS base
+FROM node:26.12.1-bookworm-slim AS base
 
 ENV PNPM_HOME=/pnpm \
     PATH="/pnpm:$PATH" \
@@ -32,7 +32,7 @@ COPY . .
 
 RUN pnpm build
 
-FROM node:24.18.0-bookworm-slim AS production
+FROM node:26.12.1-bookworm-slim AS production
 
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
