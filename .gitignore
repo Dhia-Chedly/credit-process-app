@@ -1,0 +1,83 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Source workbooks contain client PII and must never be committed
+*.xlsx
+*.xls
+*.xlsm
+*.ods
+!templates/SUIVI ACCUEIL <NOM DE L’AGENCE>.xlsx
+!templates/Etat des en cours agences <MM-YY>.xlsx
+*.csv
+*.tsv
+*.jsonl
+*.ndjson
+*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+.cache/
+.pyright/
+.tox/
+.nox/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+.venv/
+backend/staticfiles/
+backend/media/
+celerybeat-schedule
+*.pid
+
+# Node / Next.js
+node_modules/
+.pnpm-store/
+.next/
+frontend/coverage/
+*.tsbuildinfo
+.eslintcache
+.parcel-cache/
+.turbo/
+.vercel/
+dist/
+build/
+playwright-report/
+test-results/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors and operating systems
+.idea/
+.vscode/
+.~lock.*
+.DS_Store
+Thumbs.db
+
+# Runtime files
+*.log
+*.sqlite3
+*.sqlite
+*.db
+*.db-journal
+*.sqlite-journal
+*.sqlite3-journal
+*.dump
+*.bak
+tmp/
+
+*.pdf

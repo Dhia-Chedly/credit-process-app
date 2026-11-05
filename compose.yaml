@@ -1,0 +1,148 @@
+name: microcrd
+
+x-backend-environment: &backend-environment
+  DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.local}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-local-only-change-me}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,backend}
+  DJANGO_CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+  DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:3000}
+  DATABASE_URL: ${DATABASE_URL:-postgresql://microcrd:microcrd-local@db:5432/microcrd}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-amqp://microcrd:microcrd-local@rabbitmq:5672/microcrd}
+  WAREHOUSE_PII_ENCRYPTION_KEYS: ${WAREHOUSE_PII_ENCRYPTION_KEYS:-local-only-pii-key-change-me,local-only-change-me}
+  IMPORT_MAX_UPLOAD_BYTES: ${IMPORT_MAX_UPLOAD_BYTES:-26214400}
+  IMPORT_MAX_UNCOMPRESSED_BYTES: ${IMPORT_MAX_UNCOMPRESSED_BYTES:-536870912}
+  FILE_UPLOAD_MAX_MEMORY_SIZE: ${FILE_UPLOAD_MAX_MEMORY_SIZE:-5242880}
+  ALERT_EMAIL_ENABLED: ${ALERT_EMAIL_ENABLED:-false}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_APP_PASSWORD: ${SMTP_APP_PASSWORD:-}
+  SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+  SMTP_USE_TLS: ${SMTP_USE_TLS:-true}
+  ASSISTANT_ENABLED: ${ASSISTANT_ENABLED:-false}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-}
+  ASSISTANT_MAX_OUTPUT_TOKENS: ${ASSISTANT_MAX_OUTPUT_TOKENS:-900}
+
+x-backend-service: &backend-service
+  image: microcrd-backend:development
+  environment: *backend-environment
+  volumes:
+    - ./backend:/app:z
+    - ./templates:/templates:ro,z
+    - uploads_data:/app/media
+  init: true
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-microcrd}
+      POSTGRES_USER: ${POSTGRES_USER:-microcrd}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-microcrd-local}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4.3.1-management
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-microcrd}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-microcrd-local}
+      RABBITMQ_DEFAULT_VHOST: ${RABBITMQ_DEFAULT_VHOST:-microcrd}
+    ports:
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    <<: *backend-service
+    build:
+      context: ./backend
+      target: development
+    command: >-
+      sh -c 'python manage.py migrate --noinput &&
+      exec python manage.py runserver 0.0.0.0:8000'
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready/', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    <<: *backend-service
+    pull_policy: never
+    command: >-
+      sh -c 'mkdir -p /app/media && chown -R app:app /app/media &&
+      exec celery -A config worker --uid=app --gid=app --loglevel=INFO
+      --concurrency=2 --without-gossip --without-mingle'
+    depends_on:
+      backend:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      target: development
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api}
+    volumes:
+      - ./frontend:/app:z
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
+    command: pnpm dev --hostname 0.0.0.0
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    init: true
+    restart: unless-stopped
+
+volumes:
+  frontend_node_modules:
+  frontend_next:
+  postgres_data:
+  rabbitmq_data:
+  uploads_data:

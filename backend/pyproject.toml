@@ -1,0 +1,119 @@
+[project]
+name = "credit-operations-backend"
+version = "0.1.0"
+description = "Credit request ingestion and operations API"
+requires-python = ">=3.13,<3.15"
+dependencies = [
+  "celery>=5.6,<5.7",
+  "cryptography>=46,<47",
+  "django>=5.2,<5.3",
+  "django-cors-headers>=4.9,<5",
+  "django-environ>=0.12,<1",
+  "django-filter>=25.2,<26",
+  "djangorestframework>=3.16,<3.17",
+  "djangorestframework-simplejwt>=5.5,<6",
+  "drf-spectacular>=0.28,<0.29",
+  "gunicorn>=23,<24",
+  "openpyxl>=3.1,<4",
+  "openai>=2.30,<3",
+  "pandas>=3.0,<3.1",
+  "pandera[pandas]>=0.27,<0.29",
+  "psycopg[binary]>=3.2,<3.4",
+  "whitenoise>=6.11,<7",
+]
+
+[dependency-groups]
+dev = [
+  "django-stubs[compatible-mypy]>=5.2,<5.3",
+  "djangorestframework-stubs[compatible-mypy]>=3.16,<3.17",
+  "mypy>=1.18,<2",
+  "pytest>=9,<10",
+  "pytest-cov>=7,<8",
+  "pytest-django>=4.11,<5",
+  "ruff>=0.14,<0.15",
+  "types-openpyxl>=3.1,<4",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src"]
+extend-exclude = ["src/**/migrations/*.py"]
+
+[tool.ruff.lint]
+select = [
+  "A",
+  "ARG",
+  "B",
+  "C4",
+  "DJ",
+  "E",
+  "F",
+  "I",
+  "N",
+  "PERF",
+  "PIE",
+  "PT",
+  "RET",
+  "RUF",
+  "SIM",
+  "UP",
+  "W",
+]
+ignore = ["RUF012"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["apps", "config"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/config/settings/*.py" = ["F403", "F405"]
+"tests/*.py" = ["ARG001"]
+"tests/test_import_templates.py" = ["RUF001"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+pythonpath = ["src"]
+testpaths = ["tests", "src"]
+addopts = [
+  "--strict-config",
+  "--strict-markers",
+  "--cov=src",
+  "--cov-report=term-missing",
+  "--cov-report=xml",
+  "--cov-fail-under=55",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+  "src/**/migrations/*",
+  "src/config/asgi.py",
+  "src/config/wsgi.py",
+  "src/manage.py",
+]
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "if __name__ == .__main__.:",
+  "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.13"
+plugins = ["mypy_django_plugin.main", "mypy_drf_plugin.main"]
+mypy_path = "src"
+strict = true
+warn_unreachable = true
+exclude = ["/migrations/"]
+
+[[tool.mypy.overrides]]
+module = ["celery.*", "django_filters.*", "environ.*", "kombu.*", "rest_framework_simplejwt.*"]
+ignore_missing_imports = true
+disallow_subclassing_any = false
+
+[tool.django-stubs]
+django_settings_module = "config.settings.test"

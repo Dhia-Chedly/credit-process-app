@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Validate Compose model
+        run: docker compose config --quiet
+      - name: Reject tracked data files
+        run: |
+          if git ls-files '*.xlsx' '*.xls' '*.xlsm' '*.ods' '*.csv' '*.tsv' '*.jsonl' '*.ndjson' '*.parquet' '*.db' '*.sqlite' '*.sqlite3' '*.dump' '*.bak' |
+            grep -v -x -F -e 'templates/SUIVI ACCUEIL <NOM DE L’AGENCE>.xlsx' -e 'templates/Etat des en cours agences <MM-YY>.xlsx' |
+            grep .; then
+            echo 'Data files must not be tracked.' >&2
+            exit 1
+          fi
+
+  backend:
+    name: Backend quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build backend image and start database
+        run: |
+          docker compose build backend
+          docker compose up -d --wait db
+      - name: Check backend
+        run: |
+          docker compose run --rm --no-deps backend ruff format --check src tests manage.py
+          docker compose run --rm --no-deps backend ruff check src tests manage.py
+          docker compose run --rm --no-deps backend mypy src tests
+          docker compose run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.test backend pytest
+          docker compose run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.test backend python manage.py spectacular --file /tmp/microcrd-openapi.yml --validate --fail-on-warn
+          docker compose run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.test backend python manage.py makemigrations --check --dry-run
+          docker compose run --rm --no-deps -e DJANGO_SETTINGS_MODULE=config.settings.production -e DJANGO_SECRET_KEY=ci-only-4zKp9Vf3mQ7xT2rL8nB5cD1sH6wJ0uE9aY3gF7qR2vN8 -e DJANGO_ALLOWED_HOSTS=example.test -e WAREHOUSE_PII_ENCRYPTION_KEYS=ci-only-pii-key -e WAREHOUSE_MATCHING_HMAC_KEY=ci-only-matching-key -e EMAIL_HOST=localhost backend python manage.py check --deploy --fail-level WARNING
+      - name: Stop services
+        if: always()
+        run: docker compose down --remove-orphans
+
+  frontend:
+    name: Frontend quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build frontend image
+        run: docker compose build frontend
+      - name: Check frontend
+        run: |
+          docker compose run --rm --no-deps frontend pnpm format:check
+          docker compose run --rm --no-deps frontend pnpm lint
+          docker compose run --rm --no-deps frontend pnpm typecheck
+          docker compose run --rm --no-deps frontend pnpm test
+
+  integration:
+    name: Minimal local topology smoke test
+    runs-on: ubuntu-latest
+    needs: [repository, backend, frontend]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Start complete five-service stack
+        run: docker compose up -d --build --wait db rabbitmq backend worker frontend
+      - name: Verify HTTP boundaries
+        run: |
+          curl --fail --silent --show-error http://localhost:8000/api/health/ready/
+          curl --fail --silent --show-error http://localhost:3000/api/health
+      - name: Verify task delivery through RabbitMQ
+        run: |
+          task_id="$(docker compose exec -T backend celery -A config call core.ping | tail -n 1 | tr -d '\r')"
+          test -n "$task_id"
+          for attempt in $(seq 1 30); do
+            if docker compose logs --no-color worker | grep -Fq "Task core.ping[$task_id] succeeded"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs --no-color worker rabbitmq
+          exit 1
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop services
+        if: always()
+        run: docker compose down --remove-orphans
+
+  containers:
+    name: Production container builds
+    runs-on: ubuntu-latest
+    needs: [integration]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build backend production image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          target: production
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - name: Build frontend production image
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          target: production
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend

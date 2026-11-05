@@ -1,0 +1,10 @@
+allowBuilds:
+  sharp: true
+  unrs-resolver: true
+engineStrict: true
+fetchRetries: 5
+fetchRetryMaxtimeout: 120000
+fetchRetryMintimeout: 10000
+fetchTimeout: 300000
+networkConcurrency: 8
+saveExact: true

@@ -1,0 +1,5 @@
+.next
+.pnpm-store
+node_modules
+coverage
+*.log
