@@ -17,7 +17,7 @@ jobs:
     name: Repository checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Validate Compose model
         run: docker compose config --quiet
       - name: Reject tracked data files
@@ -33,7 +33,7 @@ jobs:
     name: Backend quality gates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build backend image and start database
         run: |
           docker compose build backend
@@ -55,7 +55,7 @@ jobs:
     name: Frontend quality gates
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build frontend image
         run: docker compose build frontend
       - name: Check frontend
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [repository, backend, frontend]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Start complete five-service stack
         run: docker compose up -d --build --wait db rabbitmq backend worker frontend
       - name: Verify HTTP boundaries
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [integration]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
       - name: Build backend production image
         uses: docker/build-push-action@v7
